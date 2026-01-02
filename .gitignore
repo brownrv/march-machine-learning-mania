@@ -1,79 +1,57 @@
-############################
 # Python
-############################
 __pycache__/
 *.py[cod]
 *.pyd
 
-# Type checker / linter caches
+# Tooling caches
 .mypy_cache/
 .dmypy.json
 .ruff_cache/
-
-# Test / coverage artifacts
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
-*.cover
 coverage.xml
 
-############################
 # Virtual environments
-############################
 .venv/
 venv/
 env/
 ENV/
 
-############################
-# Packaging / build outputs
-############################
+# Build / packaging
 build/
 dist/
 *.egg-info/
 
-############################
-# Jupyter / notebooks
-############################
+# Jupyter
 .ipynb_checkpoints/
 
-############################
-# Local data + artifacts
-############################
+# Local data & ML artifacts
 data/
 submissions/
 mlruns/
+mlflow.db
 
-############################
-# Airflow (local + docker-mounted)
-############################
+# Airflow (local Docker)
 logs/
 airflow.db
 airflow.cfg
 
-############################
-# Secrets / env files
-############################
+# Environment variables / secrets
 .env
 .env.*
 !.env.example
 
-############################
-# Editors / OS junk
-############################
+# Editors / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-############################
 # Node / Streamlit
-############################
 node_modules/
 .streamlit/secrets.toml
 
-############################
-# Optional: caches
-############################
+# Misc caches
 .cache/

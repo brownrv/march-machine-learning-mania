@@ -11,6 +11,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.29.0",
+    "jupyter>=1.1.1",
+    "mlflow>=2.20.0",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
