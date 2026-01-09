@@ -1272,6 +1272,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pandas" },
+    { name = "python-dateutil" },
     { name = "requests" },
 ]
 
@@ -1289,6 +1290,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
+    { name = "python-dateutil", specifier = ">=2.8.2" },
     { name = "requests", specifier = ">=2.32.5" },
 ]
 
