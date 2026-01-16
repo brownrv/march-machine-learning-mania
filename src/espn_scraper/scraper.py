@@ -12,7 +12,13 @@ from datetime import datetime
 
 from .cache import get_cached, get_filename, is_cached, write_cache
 from .client import DEFAULT_USER_AGENT, get_multiple_json, get_new_json
-from .leagues import get_available_seasons, get_ncw_groups, get_season, is_scoreboard_season
+from .leagues import (
+    get_available_seasons,
+    get_ncw_groups,
+    get_season,
+    get_yesterday,
+    is_scoreboard_season,
+)
 from .urls import (
     get_all_schedule_urls,
     get_all_scoreboard_urls,
@@ -32,6 +38,8 @@ from .urls import (
 def get_schedule(league, date_or_season_year):
     """
     Return a list of schedule URLs for a league or date(s).
+
+    Automatically skips dates >= today to avoid scraping incomplete games.
 
     Args:
         league: League identifier
@@ -68,6 +76,11 @@ def get_schedule(league, date_or_season_year):
             )
     # single date
     else:
+        # Skip today and future dates
+        yesterday = get_yesterday()
+        if date_or_season_year > yesterday:
+            print(f"Skipping {date_or_season_year} (today or future date)")
+            return []
         if is_scoreboard_season(league, season):
             for group in get_ncw_groups():
                 urls.append(get_scoreboard_url(league, date_or_season_year, group))

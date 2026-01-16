@@ -352,6 +352,7 @@ uv run ruff check tests/espn_scraper/
 4. ✅ **Multi-league support** - `--league both` option
 5. ✅ **Multi-season support** - Year ranges (`2020-2024`) and comma-separated (`2022,2023,2024`)
 6. ✅ **Jitter for rate limiting** - Random delay spread to avoid thundering herd
+7. ✅ **Future date protection** - Automatically caps date ranges at yesterday to avoid incomplete games
 
 ### Potential Future Improvements
 1. **Type hints** - Add comprehensive type annotations

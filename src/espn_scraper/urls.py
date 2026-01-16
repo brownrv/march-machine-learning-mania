@@ -15,6 +15,7 @@ from .leagues import (
     get_leagues,
     get_ncw_groups,
     get_season_start_end_dates,
+    get_yesterday,
     is_scoreboard_season,
 )
 
@@ -68,9 +69,16 @@ def get_all_schedule_urls(league, season_year):
 
 
 def get_range_of_schedule_urls(league, start_date, end_date):
-    """Return a list of all schedule URLs for a given league and date range"""
+    """Return a list of all schedule URLs for a given league and date range.
+
+    Automatically caps end_date at yesterday to avoid scraping incomplete games.
+    """
     urls = []
     if league in get_leagues():
+        # Cap at yesterday to avoid incomplete game data
+        yesterday = get_yesterday()
+        if end_date > yesterday:
+            end_date = yesterday
         while start_date <= end_date:
             urls.append(get_schedule_url(league, start_date))
             start_date = datetime.strftime(
@@ -93,9 +101,16 @@ def get_all_scoreboard_urls(league, season_year):
 
 
 def get_range_of_scoreboard_urls(league, start_date, end_date):
-    """Return a list of all scoreboard URLs for a given league and date range"""
+    """Return a list of all scoreboard URLs for a given league and date range.
+
+    Automatically caps end_date at yesterday to avoid scraping incomplete games.
+    """
     urls = []
     if league in get_leagues():
+        # Cap at yesterday to avoid incomplete game data
+        yesterday = get_yesterday()
+        if end_date > yesterday:
+            end_date = yesterday
         while start_date <= end_date:
             for group in get_ncw_groups():
                 urls.append(get_scoreboard_url(league, start_date, group))

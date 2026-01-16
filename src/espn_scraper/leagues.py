@@ -19,6 +19,11 @@ def get_leagues():
     return ["mens-college-basketball", "womens-college-basketball"]
 
 
+def get_yesterday():
+    """Get yesterday's date as YYYYMMDD string (latest safe date to scrape)."""
+    return datetime.strftime(datetime.now() - relativedelta(days=1), "%Y%m%d")
+
+
 def get_ncw_groups():
     """Return list of NCAA women's basketball conference groups for scoreboard API"""
     return [
@@ -119,10 +124,10 @@ def get_season_start_end_dates(league, season_year):
             season_year = int(season_year)
             start_date = str(season_year - 1) + "1101"
             end_date = str(season_year) + "0430"
-            # Use yesterday instead of today.
-            current_date = datetime.strftime(datetime.now() - relativedelta(days=1), "%Y%m%d")
-            if current_date < end_date:
-                end_date = current_date
+            # Cap at yesterday to avoid incomplete game data
+            yesterday = get_yesterday()
+            if yesterday < end_date:
+                end_date = yesterday
             return start_date, end_date
         else:
             raise ValueError("data is not available for given season_year")
