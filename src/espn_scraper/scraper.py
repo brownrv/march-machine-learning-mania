@@ -11,7 +11,7 @@ This module contains the main entry points:
 from datetime import datetime
 
 from .cache import get_cached, get_filename, is_cached, write_cache
-from .client import DEFAULT_USER_AGENT, get_new_json
+from .client import DEFAULT_USER_AGENT, get_multiple_json, get_new_json
 from .leagues import get_available_seasons, get_ncw_groups, get_season, is_scoreboard_season
 from .urls import (
     get_all_schedule_urls,
@@ -191,7 +191,7 @@ def get_all(league, date_or_season_year, cached_path=None):
     1. Gets schedule URLs for the requested league/date
     2. Fetches schedule data
     3. Extracts game IDs from schedule
-    4. Fetches game, boxscore, and play-by-play data for each game
+    4. Fetches game, boxscore, and play-by-play data concurrently for each game
 
     Args:
         league: League identifier (e.g., "mens-college-basketball")
@@ -222,14 +222,46 @@ def get_all(league, date_or_season_year, cached_path=None):
             print(date + " -> " + str(len(game_ids)) + " games_ids")
         elif "error_msg" in schedule:
             print(str(schedule["error_code"]) + " - " + schedule["error_msg"] + ":  " + url)
+
+        # Collect URLs that need fetching (not cached)
+        urls_to_fetch = []
+        url_metadata = []  # Track (url, data_type) for caching
         for game in game_ids:
-            get_url(get_game_url(league, game), season, cached_path)
-            get_url(get_boxscore_url(league, game), season, cached_path)
-            get_url(get_playbyplay_url(league, game), season, cached_path)
+            game_url = get_game_url(league, game)
+            boxscore_url = get_boxscore_url(league, game)
+            playbyplay_url = get_playbyplay_url(league, game)
+
+            # Check cache for each URL
+            for data_url, data_type in [
+                (game_url, "game"),
+                (boxscore_url, "boxscore"),
+                (playbyplay_url, "playbyplay"),
+            ]:
+                if cached_path:
+                    filename = get_filename(cached_path, league, season, data_type, data_url)
+                    if is_cached(filename):
+                        continue  # Skip cached files
+                urls_to_fetch.append(data_url)
+                url_metadata.append((data_url, data_type))
+
+        # Fetch uncached URLs concurrently (3 at a time)
+        if urls_to_fetch:
+            print(f"Fetching {len(urls_to_fetch)} uncached URLs concurrently...")
+            results = get_multiple_json(urls_to_fetch, max_workers=3)
+
+            # Process and cache results
+            for data_url, data_type in url_metadata:
+                if data_url in results:
+                    data = results[data_url]
+                    if "error_msg" not in data:
+                        data = data["page"]["content"]["gamepackage"]
+                    if cached_path:
+                        filename = get_filename(cached_path, league, season, data_type, data_url)
+                        write_cache(filename, data)
+
         t4 = datetime.now()
         print(f"Game Data elapsed time: {t4-t3}")
     print(f"Total elapsed time: {datetime.now()-t1}")
-    pass
 
 
 def get_missing(league, date_or_season_year, cached_path="cached_data"):
@@ -313,14 +345,27 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
         print("Search complete. Found " + str(len(missing_urls)) + " URL(s) not cached.")
 
         if len(missing_urls) > 0:
-            print("Fetching missing data.")
+            print("Fetching missing data concurrently...")
+
+            # Build metadata for caching
+            url_metadata = []
             for missing_url in missing_urls:
                 data_type = get_data_type_from_url(missing_url)
-                data_type_id = get_data_type_id_from_url(missing_url)
-                overwrite_cached_url(
-                    missing_url, league, season, data_type, data_type_id, cached_path
-                )
+                url_metadata.append((missing_url, data_type))
+
+            # Fetch all missing URLs concurrently (3 at a time)
+            results = get_multiple_json(missing_urls, max_workers=3)
+
+            # Process and cache results
+            for data_url, data_type in url_metadata:
+                if data_url in results:
+                    data = results[data_url]
+                    if "error_msg" not in data:
+                        if data_type in ["boxscore", "playbyplay", "game"]:
+                            data = data["page"]["content"]["gamepackage"]
+                    filename = get_filename(cached_path, league, season, data_type, data_url)
+                    write_cache(filename, data)
+
             print("Completed fetching missing data.")
     else:
         raise ValueError("cached_path not specified.")
-    pass

@@ -25,21 +25,60 @@ def cli():
     pass
 
 
+def parse_leagues(league_arg):
+    """Parse league argument, expanding 'both' to both leagues."""
+    if league_arg == "both":
+        return ["mens-college-basketball", "womens-college-basketball"]
+    return [league_arg]
+
+
+def parse_seasons(season_arg):
+    """
+    Parse season argument, supporting comma-separated values and year ranges.
+
+    Examples:
+        "2024" -> ["2024"]
+        "2023,2024,2025" -> ["2023", "2024", "2025"]
+        "2020-2024" -> ["2020", "2021", "2022", "2023", "2024"]
+        "20241104" -> ["20241104"] (single date, passed through)
+        "20241101-20241231" -> ["20241101-20241231"] (date range, passed through)
+    """
+    # Check for comma-separated values
+    if "," in season_arg:
+        return [s.strip() for s in season_arg.split(",")]
+
+    # Check for year range (4 digits - 4 digits, not date range which is 8-8)
+    if "-" in season_arg:
+        parts = season_arg.split("-")
+        if len(parts) == 2 and len(parts[0]) == 4 and len(parts[1]) == 4:
+            try:
+                start_year = int(parts[0])
+                end_year = int(parts[1])
+                return [str(year) for year in range(start_year, end_year + 1)]
+            except ValueError:
+                pass  # Not a year range, treat as date range
+
+    # Single value (season year, single date, or date range)
+    return [season_arg]
+
+
 @cli.command("get-all")
 @click.option(
     "--league",
     "-l",
-    type=click.Choice(["mens-college-basketball", "womens-college-basketball"]),
+    type=click.Choice(["mens-college-basketball", "womens-college-basketball", "both"]),
     required=True,
-    help="League to scrape",
+    help="League to scrape ('both' for men's and women's)",
 )
 @click.option(
     "--season",
+    "--date",
+    "--range",
     "-s",
     type=str,
     help=(
-        'Season year (e.g., "2024"), date (e.g., "20240315"), '
-        'or date range (e.g., "20240101-20240331")'
+        'Season year (e.g., "2024"), multiple seasons (e.g., "2023,2024,2025" or "2020-2024"), '
+        'date (e.g., "20240315"), or date range (e.g., "20240101-20240331")'
     ),
     required=True,
 )
@@ -65,33 +104,52 @@ def get_all_cmd(league, season, cache_dir):
         # Fetch entire season
         espn-scraper get-all -l mens-college-basketball -s 2024
 
+        # Fetch multiple seasons
+        espn-scraper get-all -l mens-college-basketball -s 2020-2024
+
+        # Fetch both leagues for a date
+        espn-scraper get-all -l both -s 20240315
+
         # Fetch single date
         espn-scraper get-all -l womens-college-basketball -s 20240315
 
         # Fetch date range
         espn-scraper get-all -l mens-college-basketball -s 20240101-20240331
     """
-    click.echo(f"Fetching all data for {league} - {season}")
+    leagues = parse_leagues(league)
+    seasons = parse_seasons(season)
+
+    click.echo(f"Leagues: {', '.join(leagues)}")
+    click.echo(f"Seasons/dates: {', '.join(seasons)}")
     click.echo(f"Cache directory: {cache_dir}")
-    get_all(league, season, cache_dir)
-    click.echo("✓ Done!")
+
+    for lg in leagues:
+        for sn in seasons:
+            click.echo(f"\n{'='*60}")
+            click.echo(f"Fetching: {lg} - {sn}")
+            click.echo('='*60)
+            get_all(lg, sn, cache_dir)
+
+    click.echo("\n✓ All done!")
 
 
 @cli.command("get-missing")
 @click.option(
     "--league",
     "-l",
-    type=click.Choice(["mens-college-basketball", "womens-college-basketball"]),
+    type=click.Choice(["mens-college-basketball", "womens-college-basketball", "both"]),
     required=True,
-    help="League to check",
+    help="League to check ('both' for men's and women's)",
 )
 @click.option(
     "--season",
+    "--date",
+    "--range",
     "-s",
     type=str,
     help=(
-        'Season year (e.g., "2024"), date (e.g., "20240315"), '
-        'or date range (e.g., "20240101-20240331")'
+        'Season year (e.g., "2024"), multiple seasons (e.g., "2023,2024,2025" or "2020-2024"), '
+        'date (e.g., "20240315"), or date range (e.g., "20240101-20240331")'
     ),
     required=True,
 )
@@ -122,13 +180,27 @@ def get_missing_cmd(league, season, cache_dir):
         # Check and fill gaps for a season
         espn-scraper get-missing -l mens-college-basketball -s 2024
 
+        # Check multiple seasons
+        espn-scraper get-missing -l both -s 2020-2024
+
         # Check specific date
         espn-scraper get-missing -l womens-college-basketball -s 20240315
     """
-    click.echo(f"Checking cache for {league} - {season}")
+    leagues = parse_leagues(league)
+    seasons = parse_seasons(season)
+
+    click.echo(f"Leagues: {', '.join(leagues)}")
+    click.echo(f"Seasons/dates: {', '.join(seasons)}")
     click.echo(f"Cache directory: {cache_dir}")
-    get_missing(league, season, cache_dir)
-    click.echo("✓ Done!")
+
+    for lg in leagues:
+        for sn in seasons:
+            click.echo(f"\n{'='*60}")
+            click.echo(f"Checking: {lg} - {sn}")
+            click.echo('='*60)
+            get_missing(lg, sn, cache_dir)
+
+    click.echo("\n✓ All done!")
 
 
 @cli.command("list-leagues")

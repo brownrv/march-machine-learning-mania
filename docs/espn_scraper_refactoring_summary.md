@@ -1,8 +1,8 @@
 # ESPN Scraper Refactoring - Complete Summary
 
-**Date:** January 9, 2026
+**Date:** January 9, 2026 (Updated: January 16, 2026)
 **Branch:** `dev`
-**Commits:** 3 commits (1bf9267, 74d1200, a7bc557)
+**Commits:** 3 initial commits + performance & feature updates
 
 ---
 
@@ -20,6 +20,8 @@ Transform a monolithic ESPN basketball scraper from manual Python CLI usage into
 - ❌ No tests
 - ❌ Intertwined concerns (HTTP, cache, URLs, scraping logic)
 - ❌ Difficult to maintain and extend
+- ❌ Sequential HTTP requests (3.5s delay each)
+- ❌ ~37 minutes to scrape a single day
 
 ### After Refactoring
 - ✅ **6 focused modules** (816 lines, well-organized)
@@ -28,6 +30,8 @@ Transform a monolithic ESPN basketball scraper from manual Python CLI usage into
 - ✅ **100% linting compliance** (Ruff)
 - ✅ **Clear separation of concerns**
 - ✅ **Production-ready** for Airflow integration
+- ✅ **~7x faster** (~5-8 min vs 37 min per day)
+- ✅ **Multi-league & multi-season support**
 
 ---
 
@@ -61,6 +65,35 @@ src/espn_scraper/
 
 ---
 
+## ⚡ Performance Improvements (January 2026 Update)
+
+### Optimizations Applied
+
+| Optimization | Before | After | Impact |
+|-------------|--------|-------|--------|
+| Request delay | 3.5s | 1.0s | ~3.5x faster |
+| Concurrency | Sequential | 3 workers | ~3x faster |
+| Session reuse | New per request | Pooled (10 connections) | Reduced overhead |
+| Cache checking | During fetch | Before fetch | Skip cached files entirely |
+| Retry strategy | 3 retries, 0.5s backoff | 5 retries, 1.0s backoff | Better 503 handling |
+
+### Retry Strategy Details
+
+```python
+Retry(
+    total=5,                              # 5 retry attempts
+    backoff_factor=1.0,                   # Exponential: 2s, 4s, 8s, 16s, 32s
+    status_forcelist=[429, 500, 502, 503, 504],
+    respect_retry_after_header=True,      # Honor server's Retry-After
+    raise_on_status=False,
+)
+```
+
+### Jitter for Concurrent Requests
+Random 0-50% delay added to prevent "thundering herd" when multiple workers hit the server simultaneously.
+
+---
+
 ## 🔧 CLI Commands
 
 ### Available Commands
@@ -75,8 +108,17 @@ espn-scraper get-all -l womens-college-basketball -s 20240315
 # Fetch date range
 espn-scraper get-all -l mens-college-basketball -s 20240101-20240331
 
+# Fetch multiple seasons (year range)
+espn-scraper get-all -l mens-college-basketball -s 2020-2024
+
+# Fetch both leagues at once
+espn-scraper get-all -l both -s 20240315
+
 # Check cache and fetch missing data
 espn-scraper get-missing -l mens-college-basketball -s 2024
+
+# Resume with both leagues and multiple seasons
+espn-scraper get-missing -l both -s 2020-2024
 
 # List supported leagues
 espn-scraper list-leagues
@@ -95,6 +137,8 @@ espn-scraper get-all --help
 - Default cache directory (`cached_data`)
 - Comprehensive error messages
 - Version information
+- **Multi-league support** (`--league both`)
+- **Multi-season support** (`--season 2020-2024` or `--season 2022,2023,2024`)
 
 ---
 
@@ -301,14 +345,23 @@ uv run ruff check tests/espn_scraper/
 4. **Clear separation** - Each module has a single responsibility
 5. **Test-friendly design** - Dependency injection (headers, cache_path)
 
+### Completed Improvements (January 2026)
+1. ✅ **Concurrent fetching** - 3 parallel workers with ThreadPoolExecutor
+2. ✅ **Connection pooling** - Reusable session with 10 pooled connections
+3. ✅ **Improved retry logic** - 5 retries with exponential backoff for 503 errors
+4. ✅ **Multi-league support** - `--league both` option
+5. ✅ **Multi-season support** - Year ranges (`2020-2024`) and comma-separated (`2022,2023,2024`)
+6. ✅ **Jitter for rate limiting** - Random delay spread to avoid thundering herd
+
 ### Potential Future Improvements
 1. **Type hints** - Add comprehensive type annotations
-2. **Async support** - Make HTTP client async-friendly
+2. **Async support** - Make HTTP client fully async with aiohttp
 3. **Progress bars** - Add progress indicators for long-running scrapes
 4. **Logging** - Replace print() with proper logging module
 5. **Configuration** - Add config file support (.espnrc)
-6. **VCR integration tests** - Record/replay HTTP for full integration tests
-7. **Coverage reports** - Add pytest-cov for detailed coverage metrics
+6. **CLI delay flag** - Add `--delay` option to control rate limiting at runtime
+7. **VCR integration tests** - Record/replay HTTP for full integration tests
+8. **Coverage reports** - Add pytest-cov for detailed coverage metrics
 
 ---
 

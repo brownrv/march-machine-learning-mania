@@ -1,7 +1,22 @@
 # March Machine Learning Mania – Dev Cheat Sheet
 
-This file is the single source of truth for getting this repo
+This file is the **single source of truth** for getting this repo  
 back into a working state after a reboot.
+
+---
+
+## 0. Prerequisites (Read First)
+
+### Docker Desktop
+🚨 **Docker Desktop must be running before starting Airflow.**
+
+- Start Docker Desktop manually
+- Wait until it shows **“Docker Engine running”**
+- Only then run any `docker compose` commands
+
+If Docker Desktop is not running:
+- Airflow containers will fail silently or hang
+- Volume mounts may not initialize correctly
 
 ---
 
@@ -10,8 +25,9 @@ back into a working state after a reboot.
 **Repo root:**  
 `march-machine-learning-mania/`
 
-**Python package:**  
-`kaggle_mmlm` (under `src/`)
+**Python packages (under `src/`):**
+- `kaggle_mmlm` – modeling, MLflow, competition logic
+- `espn_scraper` – ESPN data ingestion (CLI + Python API)
 
 **Python version (local dev):**
 - Pinned via `.python-version`
@@ -27,7 +43,7 @@ back into a working state after a reboot.
 - Python pinned to 3.11
 - `.venv/` managed by uv
 
-### After reboot / fresh terminal
+### After reboot / fresh terminal  
 Run from **repo root**:
 
 ```powershell
@@ -37,7 +53,7 @@ uv pip install -e .
 
 ### Verify imports
 ```powershell
-uv run python -c "import kaggle_mmlm; print('ok', kaggle_mmlm.__file__)"
+uv run python -c "import kaggle_mmlm, espn_scraper; print('ok')"
 ```
 
 ---
@@ -107,20 +123,143 @@ Open:
 
 ---
 
-## 5. Tests
+## 5. ESPN Scraper (Local)
+
+**Package:**
+`src/espn_scraper/`
+
+**Unit of work:**
+- **One day of games** (or season, date range)
+
+**Cache model:**
+- Raw JSON responses
+- Deterministic folder layout
+- Safe to re-run (idempotent, skips cached files)
+
+**Performance:**
+- Concurrent fetching (3 workers)
+- Connection pooling with retry logic
+- ~5-8 min for a full day vs ~37 min before optimization
+
+### CLI usage
+
+```powershell
+# Show commands
+espn-scraper --help
+espn-scraper <command> --help
+```
+
+#### Single date
+```powershell
+espn-scraper get-all `
+  --league mens-college-basketball `
+  --date 20240101 `
+  --cache-dir data/raw/espn
+```
+
+#### Date range
+```powershell
+espn-scraper get-all `
+  --league mens-college-basketball `
+  --date 20241101-20241231 `
+  --cache-dir data/raw/espn
+```
+
+#### Full season
+```powershell
+espn-scraper get-all `
+  --league mens-college-basketball `
+  --season 2024 `
+  --cache-dir data/raw/espn
+```
+
+#### Multiple seasons (year range)
+```powershell
+espn-scraper get-all `
+  --league mens-college-basketball `
+  --season 2020-2024 `
+  --cache-dir data/raw/espn
+```
+
+#### Both leagues at once
+```powershell
+espn-scraper get-all `
+  --league both `
+  --date 20240315 `
+  --cache-dir data/raw/espn
+```
+
+#### Resume interrupted scrape (fetch missing only)
+```powershell
+espn-scraper get-missing `
+  --league both `
+  --season 2020-2024 `
+  --cache-dir data/raw/espn
+```
+
+### Python API
+```python
+from espn_scraper import get_all, get_missing
+
+# Single date
+get_all("mens-college-basketball", "20240101", "data/raw/espn")
+
+# Full season
+get_all("mens-college-basketball", "2024", "data/raw/espn")
+
+# Date range
+get_all("womens-college-basketball", "20241101-20241231", "data/raw/espn")
+
+# Resume interrupted scrape
+get_missing("mens-college-basketball", "2024", "data/raw/espn")
+```
+
+### Cache contract (important)
+```text
+data/raw/espn/
+  <league>/
+    <season>/
+      schedule/
+        YYYYMMDD.json
+      game/
+        <game_id>.json
+      boxscore/
+        <game_id>.json
+      playbyplay/
+        <game_id>.json
+```
+
+### Retry & Rate Limiting
+- Default delay: 1.0 second between requests
+- 5 retries with exponential backoff (2s, 4s, 8s, 16s, 32s)
+- Handles 429, 500, 502, 503, 504 errors automatically
+- To adjust delay, edit `REQUEST_DELAY` in `src/espn_scraper/client.py`
+
+---
+
+## 6. Tests
 
 ### Run all tests
 ```powershell
 uv run pytest
 ```
 
+### ESPN scraper tests only
+```powershell
+uv run pytest tests/espn_scraper
+```
+
 ### Notes
+- ESPN tests use fixtures + monkeypatching
+- No network calls during tests
 - MLflow tests use isolated temporary DBs
 - No test should write to `mlflow.db`
 
 ---
 
-## 6. Airflow (Local, Dockerized)
+## 7. Airflow (Local, Dockerized)
+
+⚠️ **Docker Desktop must be running first** (see Section 0).
 
 Airflow runs **only in Docker**.  
 Do NOT install Airflow locally with pip.
@@ -153,7 +292,7 @@ docker compose down -v
 
 ---
 
-## 7. Airflow UI
+## 8. Airflow UI
 
 - URL: http://localhost:8080
 - Username: `airflow`
@@ -161,9 +300,11 @@ docker compose down -v
 
 ---
 
-## 8. Custom Airflow Image
+## 9. Custom Airflow Image
 
-Airflow uses a **custom image** that installs `kaggle_mmlm`.
+Airflow uses a **custom image** that installs:
+- `kaggle_mmlm`
+- `espn_scraper`
 
 ### Dockerfile
 ```text
@@ -176,14 +317,14 @@ cd infra/airflow
 docker compose build
 ```
 
-### Verify package inside Airflow
+### Verify packages inside Airflow
 ```powershell
-docker exec -it airflow-webserver python -c "import kaggle_mmlm; print('ok')"
+docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper; print('ok')"
 ```
 
 ---
 
-## 9. Git Hygiene
+## 10. Git Hygiene
 
 ### Files tracked
 - `pyproject.toml`
@@ -203,7 +344,7 @@ docker exec -it airflow-webserver python -c "import kaggle_mmlm; print('ok')"
 
 ---
 
-## 10. Common Commands (Quick Reference)
+## 11. Common Commands (Quick Reference)
 
 ### Repo root
 ```powershell
@@ -212,6 +353,18 @@ uv pip install -e .
 uv run pytest
 uv run jupyter notebook
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+### ESPN scraper
+```powershell
+# Single date
+espn-scraper get-all --league mens-college-basketball --date 20241104 --cache-dir data/raw/espn
+
+# Both leagues, multiple seasons
+espn-scraper get-all --league both --season 2020-2024 --cache-dir data/raw/espn
+
+# Resume interrupted scrape
+espn-scraper get-missing --league both --season 2024 --cache-dir data/raw/espn
 ```
 
 ### Airflow
@@ -225,30 +378,27 @@ docker compose run --rm airflow-init
 
 ---
 
-## 11. Mental Model (Important)
+## 12. Mental Model (Important)
 
 - **Local dev & ML:** Python 3.11 (uv)
 - **Airflow runtime:** Python 3.12 (Docker image)
 - These are intentionally different
-- Airflow orchestrates; your package does the work
+- Airflow orchestrates; your packages do the work
+- ESPN scraper = ingestion (bronze)
+- Parsing / parquet = next pipeline stage (silver)
 
 ---
 
-## 12. If Something Breaks
+## 13. If Something Breaks
 
 1. Restart terminal
-2. `uv sync`
-3. `uv pip install -e .`
-4. Restart Jupyter kernel
-5. Restart Airflow containers
+2. Ensure **Docker Desktop is running**
+3. `uv sync`
+4. `uv pip install -e .`
+5. Restart Jupyter kernel
+6. Restart Airflow containers
 
 If MLflow errors look filesystem-related:
 - Delete `mlruns/` or `mlflow.db`
 - Restart kernel
 - Re-run `configure_mlflow()`
-
----
-
-
-
-

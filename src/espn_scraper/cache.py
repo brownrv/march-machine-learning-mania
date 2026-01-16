@@ -90,7 +90,7 @@ def is_cached(filename):
             print(f"Error decoding JSON from {filename}: {e}")
             return False
     else:
-        print("File does not exist.")
+        # print("File does not exist.")
         return False
 
 
