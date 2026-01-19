@@ -8,6 +8,7 @@ This module handles:
 - JSON response handling
 """
 
+import logging
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -108,12 +111,26 @@ def get_new_json(url, headers=None, delay=None):
         delay = REQUEST_DELAY
     if delay > 0:
         time.sleep(delay)
-    print(url)
-    res = retry_request(url, headers)
+    logger.debug("Fetching: %s", url)
+    try:
+        res = retry_request(url, headers)
+    except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError) as e:
+        logger.warning("SKIPPED (connection error): %s - %s", url, type(e).__name__)
+        return {"url": url, "error_code": "CONNECTION_ERROR", "error_msg": str(e)}
+    except requests.exceptions.Timeout as e:
+        logger.warning("SKIPPED (timeout): %s", url)
+        return {"url": url, "error_code": "TIMEOUT", "error_msg": str(e)}
+
     if res.status_code == 200:
-        return res.json()
+        try:
+            data = res.json()
+            logger.info("OK: %s", url)
+            return data
+        except requests.exceptions.JSONDecodeError:
+            logger.warning("SKIPPED (invalid JSON): %s", url)
+            return {"url": url, "error_code": "JSON_DECODE_ERROR", "error_msg": "Response was not valid JSON"}
     else:
-        print("ERROR:", res.status_code)
+        logger.warning("SKIPPED (HTTP %s): %s", res.status_code, url)
         return {"url": url, "error_code": res.status_code, "error_msg": "URL Error"}
 
 
@@ -144,12 +161,26 @@ def get_multiple_json(urls, headers=None, delay=None, max_workers=3):
         # Add jitter (0-50% of delay) to avoid thundering herd
         jitter = random.uniform(0, delay * 0.5)
         time.sleep(delay + jitter)
-        print(url)
-        res = retry_request(url, headers)
+        logger.debug("Fetching: %s", url)
+        try:
+            res = retry_request(url, headers)
+        except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError) as e:
+            logger.warning("SKIPPED (connection error): %s - %s", url, type(e).__name__)
+            return url, {"url": url, "error_code": "CONNECTION_ERROR", "error_msg": str(e)}
+        except requests.exceptions.Timeout as e:
+            logger.warning("SKIPPED (timeout): %s", url)
+            return url, {"url": url, "error_code": "TIMEOUT", "error_msg": str(e)}
+
         if res.status_code == 200:
-            return url, res.json()
+            try:
+                data = res.json()
+                logger.info("OK: %s", url)
+                return url, data
+            except requests.exceptions.JSONDecodeError:
+                logger.warning("SKIPPED (invalid JSON): %s", url)
+                return url, {"url": url, "error_code": "JSON_DECODE_ERROR", "error_msg": "Response was not valid JSON"}
         else:
-            print("ERROR:", res.status_code)
+            logger.warning("SKIPPED (HTTP %s): %s", res.status_code, url)
             return url, {"url": url, "error_code": res.status_code, "error_msg": "URL Error"}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

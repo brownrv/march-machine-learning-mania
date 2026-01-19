@@ -7,22 +7,96 @@ Provides commands to:
 - List supported leagues and seasons
 """
 
+import logging
+import os
+import sys
+
 import click
 
 from .leagues import get_available_seasons, get_leagues
 from .scraper import get_all, get_missing
 
+# Default log directory
+LOG_DIR = "logs"
+
+
+def setup_logging(verbose: int, log_file: str | None = None) -> None:
+    """
+    Configure logging based on verbosity level.
+
+    Args:
+        verbose: Verbosity level (0=WARNING, 1=INFO, 2+=DEBUG)
+        log_file: Optional path to log file. If provided, logs are written to file
+                  at INFO level (or higher if verbose) in addition to stderr.
+    """
+    if verbose == 0:
+        level = logging.WARNING
+    elif verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+
+    # Create formatter
+    formatter = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Get our package's logger
+    logger = logging.getLogger("espn_scraper")
+    logger.setLevel(logging.DEBUG)  # Capture all, let handlers filter
+
+    # Console handler (stderr)
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler (if log_file specified)
+    if log_file:
+        # Ensure logs directory exists
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+        # File always gets at least INFO level for review
+        file_level = min(level, logging.INFO)
+        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+        file_handler.setLevel(file_level)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        click.echo(f"Logging to: {log_file}")
+
 
 @click.group()
 @click.version_option(version="0.1.0", prog_name="espn-scraper")
-def cli():
+@click.option(
+    "-v", "--verbose",
+    count=True,
+    help="Increase verbosity (-v for INFO, -vv for DEBUG)",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    default=os.path.join(LOG_DIR, "espn-scraper.log"),
+    help=f"Write logs to file (default: {LOG_DIR}/espn-scraper.log)",
+)
+@click.pass_context
+def cli(ctx, verbose, log_file):
     """
     ESPN Basketball Scraper - Fetch NCAA basketball data from ESPN's JSON API.
 
     This tool scrapes schedule, game, boxscore, and play-by-play data
     for college basketball games and caches them locally.
+
+    Use -v for INFO level logging (shows OK/SKIPPED for each URL).
+    Use -vv for DEBUG level logging (shows all fetch attempts).
+    Use --log-file to save logs for later review.
     """
-    pass
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
+    ctx.obj["log_file"] = log_file
+    setup_logging(verbose, log_file)
 
 
 def parse_leagues(league_arg):

@@ -8,7 +8,10 @@ This module contains the main entry points:
 - get_schedule(): Get schedule URLs for a league/date
 """
 
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from .cache import get_cached, get_filename, is_cached, write_cache
 from .client import DEFAULT_USER_AGENT, get_multiple_json, get_new_json
@@ -79,7 +82,7 @@ def get_schedule(league, date_or_season_year):
         # Skip today and future dates
         yesterday = get_yesterday()
         if date_or_season_year > yesterday:
-            print(f"Skipping {date_or_season_year} (today or future date)")
+            logger.info("Skipping %s (today or future date)", date_or_season_year)
             return []
         if is_scoreboard_season(league, season):
             for group in get_ncw_groups():
@@ -222,7 +225,7 @@ def get_all(league, date_or_season_year, cached_path=None):
     schedule_urls = get_schedule(league, date_or_season_year)
 
     t2 = datetime.now()
-    print(f"Schedule Data elapsed time: {t2-t1}")
+    logger.debug("Schedule Data elapsed time: %s", t2-t1)
     for url in schedule_urls:
         t3 = datetime.now()
         schedule = get_url(url, season, cached_path)
@@ -232,9 +235,9 @@ def get_all(league, date_or_season_year, cached_path=None):
             for event in schedule:
                 if event["id"] not in game_ids:
                     game_ids.append(event["id"])
-            print(date + " -> " + str(len(game_ids)) + " games_ids")
+            logger.info("%s -> %d game_ids", date, len(game_ids))
         elif "error_msg" in schedule:
-            print(str(schedule["error_code"]) + " - " + schedule["error_msg"] + ":  " + url)
+            logger.warning("SKIPPED schedule %s: %s - %s", url, schedule["error_code"], schedule["error_msg"])
 
         # Collect URLs that need fetching (not cached)
         urls_to_fetch = []
@@ -259,22 +262,28 @@ def get_all(league, date_or_season_year, cached_path=None):
 
         # Fetch uncached URLs concurrently (3 at a time)
         if urls_to_fetch:
-            print(f"Fetching {len(urls_to_fetch)} uncached URLs concurrently...")
+            logger.info("Fetching %d uncached URLs concurrently...", len(urls_to_fetch))
             results = get_multiple_json(urls_to_fetch, max_workers=3)
 
             # Process and cache results
+            cached_count = 0
+            skipped_count = 0
             for data_url, data_type in url_metadata:
                 if data_url in results:
                     data = results[data_url]
                     if "error_msg" not in data:
                         data = data["page"]["content"]["gamepackage"]
+                        cached_count += 1
+                    else:
+                        skipped_count += 1
                     if cached_path:
                         filename = get_filename(cached_path, league, season, data_type, data_url)
                         write_cache(filename, data)
+            logger.info("Cached %d, skipped %d URLs", cached_count, skipped_count)
 
         t4 = datetime.now()
-        print(f"Game Data elapsed time: {t4-t3}")
-    print(f"Total elapsed time: {datetime.now()-t1}")
+        logger.debug("Game Data elapsed time: %s", t4-t3)
+    logger.info("Total elapsed time: %s", datetime.now()-t1)
 
 
 def get_missing(league, date_or_season_year, cached_path="cached_data"):
@@ -300,7 +309,7 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
         schedule_urls = get_schedule(league, date_or_season_year)
         missing_urls = []
         for url in schedule_urls:
-            print(url)
+            logger.debug("Checking: %s", url)
             data_type = get_data_type_from_url(url)
             data_type_id = get_data_type_id_from_url(url)
             filename = get_filename(cached_path, league, season, data_type, url)
@@ -315,9 +324,9 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
                     for event in schedule:
                         if event["id"] not in game_ids:
                             game_ids.append(event["id"])
-                    print(filename + " -> " + str(len(game_ids)) + " games_ids")
+                    logger.info("Cached: %s -> %d game_ids", filename, len(game_ids))
                 elif "error_msg" in schedule:
-                    print(str(schedule["error_code"]) + " - " + schedule["error_msg"] + ":  " + url)
+                    logger.warning("Re-fetching cached error: %s - %s: %s", schedule["error_code"], schedule["error_msg"], url)
 
                     schedule = overwrite_cached_url(
                         url,
@@ -332,7 +341,7 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
                     for event in schedule:
                         if event["id"] not in game_ids:
                             game_ids.append(event["id"])
-                    print(filename + " -> " + str(len(game_ids)) + " games_ids")
+                    logger.info("Re-fetched: %s -> %d game_ids", filename, len(game_ids))
 
                 for game in game_ids:
                     filename_game = get_filename(
@@ -355,10 +364,10 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
                     if not is_cached(filename_playbyplay):
                         missing_urls.append(get_playbyplay_url(league, game))
 
-        print("Search complete. Found " + str(len(missing_urls)) + " URL(s) not cached.")
+        logger.info("Search complete. Found %d URL(s) not cached.", len(missing_urls))
 
         if len(missing_urls) > 0:
-            print("Fetching missing data concurrently...")
+            logger.info("Fetching %d missing URLs concurrently...", len(missing_urls))
 
             # Build metadata for caching
             url_metadata = []
@@ -370,15 +379,20 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
             results = get_multiple_json(missing_urls, max_workers=3)
 
             # Process and cache results
+            cached_count = 0
+            skipped_count = 0
             for data_url, data_type in url_metadata:
                 if data_url in results:
                     data = results[data_url]
                     if "error_msg" not in data:
                         if data_type in ["boxscore", "playbyplay", "game"]:
                             data = data["page"]["content"]["gamepackage"]
+                        cached_count += 1
+                    else:
+                        skipped_count += 1
                     filename = get_filename(cached_path, league, season, data_type, data_url)
                     write_cache(filename, data)
 
-            print("Completed fetching missing data.")
+            logger.info("Completed: cached %d, skipped %d", cached_count, skipped_count)
     else:
         raise ValueError("cached_path not specified.")

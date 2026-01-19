@@ -229,10 +229,33 @@ data/raw/espn/
         <game_id>.json
 ```
 
+### Logging
+Logs are written to `logs/espn-scraper.log` by default (gitignored).
+
+```powershell
+# Default logging (warnings only to console, INFO to file)
+espn-scraper get-all -l mens-college-basketball -s 2024
+
+# Verbose console output (INFO level)
+espn-scraper -v get-all -l mens-college-basketball -s 2024
+
+# Debug output (all fetch attempts)
+espn-scraper -vv get-all -l mens-college-basketball -s 2024
+
+# Custom log file
+espn-scraper --log-file logs/2024-scrape.log get-all -l mens-college-basketball -s 2024
+```
+
+Log levels:
+- `WARNING`: Skipped URLs (errors, invalid JSON, connection issues)
+- `INFO`: OK fetches, progress summaries, game counts
+- `DEBUG`: All fetch attempts, timing details
+
 ### Retry & Rate Limiting
 - Default delay: 1.0 second between requests
 - 5 retries with exponential backoff (2s, 4s, 8s, 16s, 32s)
 - Handles 429, 500, 502, 503, 504 errors automatically
+- Gracefully handles connection errors (ChunkedEncodingError, timeouts)
 - To adjust delay, edit `REQUEST_DELAY` in `src/espn_scraper/client.py`
 
 ---
