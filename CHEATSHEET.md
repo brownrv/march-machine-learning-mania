@@ -28,6 +28,7 @@ If Docker Desktop is not running:
 **Python packages (under `src/`):**
 - `kaggle_mmlm` – modeling, MLflow, competition logic
 - `espn_scraper` – ESPN data ingestion (CLI + Python API)
+- `espn_parser` – ESPN data parsing to parquet (CLI + Python API)
 
 **Python version (local dev):**
 - Pinned via `.python-version`
@@ -53,7 +54,7 @@ uv pip install -e .
 
 ### Verify imports
 ```powershell
-uv run python -c "import kaggle_mmlm, espn_scraper; print('ok')"
+uv run python -c "import kaggle_mmlm, espn_scraper, espn_parser; print('ok')"
 ```
 
 ---
@@ -260,7 +261,115 @@ Log levels:
 
 ---
 
-## 6. Tests
+## 6. ESPN Parser (Local)
+
+**Package:**
+`src/espn_parser/`
+
+**Purpose:**
+- Transform raw ESPN JSON (bronze) into structured parquet files (silver)
+- Extract events, games, teams, venues, players, boxscores, play-by-play
+
+**Output:**
+- Parquet files with typed columns
+- Deduplicates teams, venues, players across files
+- Ready for analysis in pandas/polars
+
+### CLI usage
+
+```powershell
+# Show commands
+espn-parser --help
+espn-parser <command> --help
+```
+
+#### Parse all data for a season
+```powershell
+espn-parser parse-all `
+  --league mens-college-basketball `
+  --season 2024
+```
+
+#### Parse multiple seasons
+```powershell
+espn-parser parse-all `
+  --league mens-college-basketball `
+  --season 2020-2024
+```
+
+#### Parse both leagues
+```powershell
+espn-parser parse-all `
+  --league both `
+  --season 2024
+```
+
+#### Parse specific data types
+```powershell
+# Events only (also extracts teams, venues)
+espn-parser parse-events -l mens-college-basketball -s 2024
+
+# Games only
+espn-parser parse-games -l mens-college-basketball -s 2024
+
+# Boxscores only (also extracts players)
+espn-parser parse-boxscores -l mens-college-basketball -s 2024
+
+# Play-by-play only
+espn-parser parse-playbyplay -l mens-college-basketball -s 2024
+```
+
+#### List cached raw data
+```powershell
+espn-parser list-cached -l both
+```
+
+### Python API
+```python
+from espn_parser import parse_all, parse_events, parse_games, parse_boxscores, parse_playbyplay
+
+# Parse all data types for a season
+parse_all("mens-college-basketball", "2024")
+
+# Parse specific data types
+parse_events("mens-college-basketball", "2024")
+parse_games("mens-college-basketball", "2024")
+parse_boxscores("mens-college-basketball", "2024")
+parse_playbyplay("mens-college-basketball", "2024")
+
+# Custom paths
+parse_all("mens-college-basketball", "2024",
+          raw_path="data/raw/espn",
+          parsed_path="data/parsed/espn")
+```
+
+### Output contract
+```text
+data/parsed/espn/
+  <league>/
+    <season>/
+      events.parquet      # Schedule events
+      games.parquet       # Game metadata
+      teams.parquet       # Teams (deduplicated)
+      venues.parquet      # Venues (deduplicated)
+      players.parquet     # Players (deduplicated)
+      boxscores.parquet   # Player box scores
+      playbyplay.parquet  # Play-by-play actions
+```
+
+### Reading parsed data
+```python
+import pandas as pd
+
+# Read parquet files directly
+events = pd.read_parquet("data/parsed/espn/mens-college-basketball/2024/events.parquet")
+games = pd.read_parquet("data/parsed/espn/mens-college-basketball/2024/games.parquet")
+boxscores = pd.read_parquet("data/parsed/espn/mens-college-basketball/2024/boxscores.parquet")
+```
+
+---
+
+## 7. Tests
 
 ### Run all tests
 ```powershell
@@ -272,6 +381,11 @@ uv run pytest
 uv run pytest tests/espn_scraper
 ```
 
+### ESPN parser tests only
+```powershell
+uv run pytest tests/espn_parser
+```
+
 ### Notes
 - ESPN tests use fixtures + monkeypatching
 - No network calls during tests
@@ -280,7 +394,7 @@ uv run pytest tests/espn_scraper
 
 ---
 
-## 7. Airflow (Local, Dockerized)
+## 8. Airflow (Local, Dockerized)
 
 ⚠️ **Docker Desktop must be running first** (see Section 0).
 
@@ -315,7 +429,7 @@ docker compose down -v
 
 ---
 
-## 8. Airflow UI
+## 9. Airflow UI
 
 - URL: http://localhost:8080
 - Username: `airflow`
@@ -323,11 +437,12 @@ docker compose down -v
 
 ---
 
-## 9. Custom Airflow Image
+## 10. Custom Airflow Image
 
 Airflow uses a **custom image** that installs:
 - `kaggle_mmlm`
 - `espn_scraper`
+- `espn_parser`
 
 ### Dockerfile
 ```text
@@ -342,12 +457,12 @@ docker compose build
 
 ### Verify packages inside Airflow
 ```powershell
-docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper; print('ok')"
+docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper, espn_parser; print('ok')"
 ```
 
 ---
 
-## 10. Git Hygiene
+## 11. Git Hygiene
 
 ### Files tracked
 - `pyproject.toml`
@@ -367,7 +482,7 @@ docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper; p
 
 ---
 
-## 11. Common Commands (Quick Reference)
+## 12. Common Commands (Quick Reference)
 
 ### Repo root
 ```powershell
@@ -390,6 +505,18 @@ espn-scraper get-all --league both --season 2020-2024 --cache-dir data/raw/espn
 espn-scraper get-missing --league both --season 2024 --cache-dir data/raw/espn
 ```
 
+### ESPN parser
+```powershell
+# Parse all data for a season
+espn-parser parse-all --league mens-college-basketball --season 2024
+
+# Parse multiple seasons
+espn-parser parse-all --league both --season 2020-2024
+
+# List cached raw data
+espn-parser list-cached --league both
+```
+
 ### Airflow
 ```powershell
 cd infra/airflow
@@ -401,18 +528,18 @@ docker compose run --rm airflow-init
 
 ---
 
-## 12. Mental Model (Important)
+## 13. Mental Model (Important)
 
 - **Local dev & ML:** Python 3.11 (uv)
 - **Airflow runtime:** Python 3.12 (Docker image)
 - These are intentionally different
 - Airflow orchestrates; your packages do the work
-- ESPN scraper = ingestion (bronze)
-- Parsing / parquet = next pipeline stage (silver)
+- ESPN scraper = ingestion (bronze layer, raw JSON)
+- ESPN parser = transformation (silver layer, parquet)
 
 ---
 
-## 13. If Something Breaks
+## 14. If Something Breaks
 
 1. Restart terminal
 2. Ensure **Docker Desktop is running**
