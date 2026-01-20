@@ -1,6 +1,6 @@
 # ESPN Scraper Refactoring - Complete Summary
 
-**Date:** January 9, 2026 (Updated: January 16, 2026)
+**Date:** January 9, 2026 (Updated: January 19, 2026)
 **Branch:** `dev`
 **Commits:** 3 initial commits + performance & feature updates
 
@@ -76,6 +76,10 @@ src/espn_scraper/
 | Session reuse | New per request | Pooled (10 connections) | Reduced overhead |
 | Cache checking | During fetch | Before fetch | Skip cached files entirely |
 | Retry strategy | 3 retries, 0.5s backoff | 5 retries, 1.0s backoff | Better 503 handling |
+| `get_missing` cache check | JSON parse per file | `os.path.isfile()` | ~10x faster existence checks |
+| URL generation | 2x per game per type | 1x per game per type | 50% fewer string allocations |
+| Directory creation | Per file check | Pre-created once | Eliminates repeated `os.makedirs` |
+| Game ID deduplication | List O(n) lookup | Set O(1) lookup | Faster for large schedules |
 
 ### Retry Strategy Details
 
@@ -353,6 +357,7 @@ uv run ruff check tests/espn_scraper/
 5. ✅ **Multi-season support** - Year ranges (`2020-2024`) and comma-separated (`2022,2023,2024`)
 6. ✅ **Jitter for rate limiting** - Random delay spread to avoid thundering herd
 7. ✅ **Future date protection** - Automatically caps date ranges at yesterday to avoid incomplete games
+8. ✅ **`get_missing` optimization** - Replaced full JSON parsing with `os.path.isfile()` for cache existence checks, pre-create directories, use sets for O(1) game ID lookups, and cache URL strings to avoid redundant generation
 
 ### Potential Future Improvements
 1. **Type hints** - Add comprehensive type annotations

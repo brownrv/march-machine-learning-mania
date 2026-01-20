@@ -9,6 +9,7 @@ This module contains the main entry points:
 """
 
 import logging
+import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -307,7 +308,15 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
     if cached_path:
         season = get_season(league, date_or_season_year)
         schedule_urls = get_schedule(league, date_or_season_year)
+
+        # Pre-create directories for game data types to avoid repeated os.makedirs checks
+        for data_type in ["game", "boxscore", "playbyplay"]:
+            dir_path = os.path.join(cached_path, league, season, data_type)
+            os.makedirs(dir_path, exist_ok=True)
+
+        # Store (url, data_type) tuples to avoid redundant URL parsing later
         missing_urls = []
+
         for url in schedule_urls:
             logger.debug("Checking: %s", url)
             data_type = get_data_type_from_url(url)
@@ -319,14 +328,16 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
                 schedule = get_cached_url(
                     url, league, season, data_type, data_type_id, cached_path
                 )
-                game_ids = []
+                game_ids = set()  # Use set for O(1) lookups instead of list
                 if "error_msg" not in schedule:
                     for event in schedule:
-                        if event["id"] not in game_ids:
-                            game_ids.append(event["id"])
+                        game_ids.add(event["id"])
                     logger.info("Cached: %s -> %d game_ids", filename, len(game_ids))
                 elif "error_msg" in schedule:
-                    logger.warning("Re-fetching cached error: %s - %s: %s", schedule["error_code"], schedule["error_msg"], url)
+                    logger.warning(
+                        "Re-fetching cached error: %s - %s: %s",
+                        schedule["error_code"], schedule["error_msg"], url
+                    )
 
                     schedule = overwrite_cached_url(
                         url,
@@ -339,49 +350,46 @@ def get_missing(league, date_or_season_year, cached_path="cached_data"):
                     )
 
                     for event in schedule:
-                        if event["id"] not in game_ids:
-                            game_ids.append(event["id"])
+                        game_ids.add(event["id"])
                     logger.info("Re-fetched: %s -> %d game_ids", filename, len(game_ids))
 
+                # Check cache for each game's data types
+                # Generate URLs once and use os.path.isfile for fast existence check
+                base_path = os.path.join(cached_path, league, season)
                 for game in game_ids:
-                    filename_game = get_filename(
-                        cached_path, league, season, "game", get_game_url(league, game)
-                    )
-                    if not is_cached(filename_game):
-                        missing_urls.append(get_game_url(league, game))
-                    filename_boxscore = get_filename(
-                        cached_path, league, season, "boxscore", get_boxscore_url(league, game)
-                    )
-                    if not is_cached(filename_boxscore):
-                        missing_urls.append(get_boxscore_url(league, game))
-                    filename_playbyplay = get_filename(
-                        cached_path,
-                        league,
-                        season,
-                        "playbyplay",
-                        get_playbyplay_url(league, game),
-                    )
-                    if not is_cached(filename_playbyplay):
-                        missing_urls.append(get_playbyplay_url(league, game))
+                    game_url = get_game_url(league, game)
+                    boxscore_url = get_boxscore_url(league, game)
+                    playbyplay_url = get_playbyplay_url(league, game)
+
+                    # Build filenames directly (directories already exist)
+                    game_file = f"{game}.json"
+                    filename_game = os.path.join(base_path, "game", game_file)
+                    filename_boxscore = os.path.join(base_path, "boxscore", game_file)
+                    filename_playbyplay = os.path.join(base_path, "playbyplay", game_file)
+
+                    # Use os.path.isfile for fast existence check (skip full JSON parse)
+                    if not os.path.isfile(filename_game):
+                        missing_urls.append((game_url, "game"))
+                    if not os.path.isfile(filename_boxscore):
+                        missing_urls.append((boxscore_url, "boxscore"))
+                    if not os.path.isfile(filename_playbyplay):
+                        missing_urls.append((playbyplay_url, "playbyplay"))
 
         logger.info("Search complete. Found %d URL(s) not cached.", len(missing_urls))
 
         if len(missing_urls) > 0:
             logger.info("Fetching %d missing URLs concurrently...", len(missing_urls))
 
-            # Build metadata for caching
-            url_metadata = []
-            for missing_url in missing_urls:
-                data_type = get_data_type_from_url(missing_url)
-                url_metadata.append((missing_url, data_type))
+            # Extract just URLs for fetching
+            urls_to_fetch = [url for url, _ in missing_urls]
 
             # Fetch all missing URLs concurrently (3 at a time)
-            results = get_multiple_json(missing_urls, max_workers=3)
+            results = get_multiple_json(urls_to_fetch, max_workers=3)
 
             # Process and cache results
             cached_count = 0
             skipped_count = 0
-            for data_url, data_type in url_metadata:
+            for data_url, data_type in missing_urls:
                 if data_url in results:
                     data = results[data_url]
                     if "error_msg" not in data:
