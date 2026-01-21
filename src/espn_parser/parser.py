@@ -5,7 +5,10 @@ This module provides high-level functions to parse all ESPN data
 for a given league and season.
 """
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from espn_parser.leagues import validate_league, validate_season
 from espn_parser.parsers import (
@@ -60,7 +63,7 @@ def parse_events(
     teams = []
     venues = []
 
-    print(f"Parsing schedule data for {league} {season}...")
+    logger.info("Parsing schedule data for %s %s...", league, season)
 
     for date_str, schedule_events in read_schedules(league, season, raw_base):
         for event in schedule_events:
@@ -77,19 +80,19 @@ def parse_events(
             if venue:
                 venues.append(venue)
 
-    print(f"  Found {len(events)} events, {len(teams)} team records, {len(venues)} venue records")
+    logger.info("  Found %d events, %d team records, %d venue records", len(events), len(teams), len(venues))
 
     # Write outputs
     results = {}
     if events:
         results["events"] = write_events(events, league, season, parsed_base)
-        print(f"  Wrote events to {results['events']}")
+        logger.info("  Wrote events to %s", results['events'])
     if teams:
         results["teams"] = write_teams(teams, league, season, parsed_base)
-        print(f"  Wrote teams to {results['teams']}")
+        logger.info("  Wrote teams to %s", results['teams'])
     if venues:
         results["venues"] = write_venues(venues, league, season, parsed_base)
-        print(f"  Wrote venues to {results['venues']}")
+        logger.info("  Wrote venues to %s", results['venues'])
 
     return results
 
@@ -121,7 +124,7 @@ def parse_games(
     games = []
     teams = []
 
-    print(f"Parsing game data for {league} {season}...")
+    logger.info("Parsing game data for %s %s...", league, season)
 
     for game_id, data in read_games(league, season, raw_base):
         # Parse game
@@ -132,17 +135,17 @@ def parse_games(
         for team in gm_strp.get("tms", []):
             teams.append(parse_team_from_game(team))
 
-    print(f"  Found {len(games)} games, {len(teams)} team records")
+    logger.info("  Found %d games, %d team records", len(games), len(teams))
 
     # Write outputs
     results = {}
     if games:
         results["games"] = write_games(games, league, season, parsed_base)
-        print(f"  Wrote games to {results['games']}")
+        logger.info("  Wrote games to %s", results['games'])
     if teams:
         # Note: This will merge with teams from schedule if parse_all is used
         results["teams"] = write_teams(teams, league, season, parsed_base)
-        print(f"  Wrote teams to {results['teams']}")
+        logger.info("  Wrote teams to %s", results['teams'])
 
     return results
 
@@ -174,23 +177,23 @@ def parse_boxscores(
     all_players = []
     all_boxscores = []
 
-    print(f"Parsing boxscore data for {league} {season}...")
+    logger.info("Parsing boxscore data for %s %s...", league, season)
 
     for game_id, data in read_boxscores(league, season, raw_base):
         players, boxscores = parse_boxscore(game_id, data)
         all_players.extend(players)
         all_boxscores.extend(boxscores)
 
-    print(f"  Found {len(all_players)} player records, {len(all_boxscores)} boxscore records")
+    logger.info("  Found %d player records, %d boxscore records", len(all_players), len(all_boxscores))
 
     # Write outputs
     results = {}
     if all_players:
         results["players"] = write_players(all_players, league, season, parsed_base)
-        print(f"  Wrote players to {results['players']}")
+        logger.info("  Wrote players to %s", results['players'])
     if all_boxscores:
         results["boxscores"] = write_boxscores(all_boxscores, league, season, parsed_base)
-        print(f"  Wrote boxscores to {results['boxscores']}")
+        logger.info("  Wrote boxscores to %s", results['boxscores'])
 
     return results
 
@@ -221,19 +224,19 @@ def parse_playbyplay(
 
     all_plays = []
 
-    print(f"Parsing play-by-play data for {league} {season}...")
+    logger.info("Parsing play-by-play data for %s %s...", league, season)
 
     for game_id, data in read_playbyplay(league, season, raw_base):
         plays = parse_playbyplay_data(game_id, data)
         all_plays.extend(plays)
 
-    print(f"  Found {len(all_plays)} play records")
+    logger.info("  Found %d play records", len(all_plays))
 
     # Write outputs
     results = {}
     if all_plays:
         results["playbyplay"] = write_playbyplay(all_plays, league, season, parsed_base)
-        print(f"  Wrote playbyplay to {results['playbyplay']}")
+        logger.info("  Wrote playbyplay to %s", results['playbyplay'])
 
     return results
 
@@ -271,8 +274,8 @@ def parse_all(
     raw_base = Path(raw_path) if raw_path else DEFAULT_RAW_BASE
     parsed_base = Path(parsed_path) if parsed_path else DEFAULT_PARSED_BASE
 
-    print(f"Parsing all data for {league} {season}...")
-    print("=" * 60)
+    logger.info("Parsing all data for %s %s...", league, season)
+    logger.info("=" * 60)
 
     # Collect all data
     events = []
@@ -284,7 +287,7 @@ def parse_all(
     plays = []
 
     # 1. Parse schedules
-    print("\n[1/4] Parsing schedule files...")
+    logger.info("[1/4] Parsing schedule files...")
     for date_str, schedule_events in read_schedules(league, season, raw_base):
         for event in schedule_events:
             events.append(parse_event(event))
@@ -293,45 +296,45 @@ def parse_all(
             venue = parse_venue_from_schedule(event)
             if venue:
                 venues.append(venue)
-    print(f"  -> {len(events)} events, {len(venues)} venues")
+    logger.info("  -> %d events, %d venues", len(events), len(venues))
 
     # 2. Parse games
-    print("\n[2/4] Parsing game files...")
+    logger.info("[2/4] Parsing game files...")
     for game_id, data in read_games(league, season, raw_base):
         games.append(parse_game(game_id, data))
         gm_strp = data.get("gmStrp", {})
         for team in gm_strp.get("tms", []):
             teams.append(parse_team_from_game(team))
-    print(f"  -> {len(games)} games")
+    logger.info("  -> %d games", len(games))
 
     # 3. Parse boxscores
-    print("\n[3/4] Parsing boxscore files...")
+    logger.info("[3/4] Parsing boxscore files...")
     for game_id, data in read_boxscores(league, season, raw_base):
         game_players, game_boxscores = parse_boxscore(game_id, data)
         players.extend(game_players)
         boxscores.extend(game_boxscores)
-    print(f"  -> {len(boxscores)} boxscore records, {len(players)} player records")
+    logger.info("  -> %d boxscore records, %d player records", len(boxscores), len(players))
 
     # 4. Parse play-by-play
-    print("\n[4/4] Parsing play-by-play files...")
+    logger.info("[4/4] Parsing play-by-play files...")
     for game_id, data in read_playbyplay(league, season, raw_base):
         game_plays = parse_playbyplay_data(game_id, data)
         plays.extend(game_plays)
-    print(f"  -> {len(plays)} play records")
+    logger.info("  -> %d play records", len(plays))
 
     # Write all outputs
-    print("\n" + "=" * 60)
-    print("Writing parquet files...")
+    logger.info("=" * 60)
+    logger.info("Writing parquet files...")
 
     results = {}
 
     if events:
         results["events"] = write_events(events, league, season, parsed_base)
-        print(f"  events.parquet: {len(events)} records")
+        logger.info("  events.parquet: %d records", len(events))
 
     if games:
         results["games"] = write_games(games, league, season, parsed_base)
-        print(f"  games.parquet: {len(games)} records")
+        logger.info("  games.parquet: %d records", len(games))
 
     if teams:
         results["teams"] = write_teams(teams, league, season, parsed_base)
@@ -339,31 +342,31 @@ def parse_all(
         import pandas as pd
 
         teams_df = pd.read_parquet(results["teams"])
-        print(f"  teams.parquet: {len(teams_df)} unique teams")
+        logger.info("  teams.parquet: %d unique teams", len(teams_df))
 
     if venues:
         results["venues"] = write_venues(venues, league, season, parsed_base)
         import pandas as pd
 
         venues_df = pd.read_parquet(results["venues"])
-        print(f"  venues.parquet: {len(venues_df)} unique venues")
+        logger.info("  venues.parquet: %d unique venues", len(venues_df))
 
     if players:
         results["players"] = write_players(players, league, season, parsed_base)
         import pandas as pd
 
         players_df = pd.read_parquet(results["players"])
-        print(f"  players.parquet: {len(players_df)} unique players")
+        logger.info("  players.parquet: %d unique players", len(players_df))
 
     if boxscores:
         results["boxscores"] = write_boxscores(boxscores, league, season, parsed_base)
-        print(f"  boxscores.parquet: {len(boxscores)} records")
+        logger.info("  boxscores.parquet: %d records", len(boxscores))
 
     if plays:
         results["playbyplay"] = write_playbyplay(plays, league, season, parsed_base)
-        print(f"  playbyplay.parquet: {len(plays)} records")
+        logger.info("  playbyplay.parquet: %d records", len(plays))
 
-    print("\n" + "=" * 60)
-    print(f"Done! Output directory: {parsed_base / league / season}")
+    logger.info("=" * 60)
+    logger.info("Done! Output directory: %s", parsed_base / league / season)
 
     return results

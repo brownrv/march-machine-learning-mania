@@ -367,6 +367,28 @@ games = pd.read_parquet("data/parsed/espn/mens-college-basketball/2024/games.par
 boxscores = pd.read_parquet("data/parsed/espn/mens-college-basketball/2024/boxscores.parquet")
 ```
 
+### Logging
+Logs are written to `logs/espn-parser.log` by default (gitignored).
+
+```powershell
+# Default logging (warnings only to console, INFO to file)
+espn-parser parse-all -l mens-college-basketball -s 2024
+
+# Verbose console output (INFO level)
+espn-parser -v parse-all -l mens-college-basketball -s 2024
+
+# Debug output (all operations)
+espn-parser -vv parse-all -l mens-college-basketball -s 2024
+
+# Custom log file
+espn-parser --log-file logs/2024-parse.log parse-all -l mens-college-basketball -s 2024
+```
+
+Log levels:
+- `WARNING`: Errors and issues during parsing
+- `INFO`: Progress details, record counts, file writes
+- `DEBUG`: All operations and detailed parsing info
+
 ---
 
 ## 7. Tests
