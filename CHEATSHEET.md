@@ -459,7 +459,52 @@ docker compose down -v
 
 ---
 
-## 10. Custom Airflow Image
+## 10. ESPN Scraper DAG (Automated Daily Scraping)
+
+**DAG file:**
+`dags/espn_scraper_daily.py`
+
+**Purpose:**
+- Scrapes ESPN data for both leagues automatically every day
+- Runs during basketball season only (Nov-Apr)
+- Scrapes yesterday's games (ensures complete data)
+
+**Schedule:**
+- Runs daily at 6 AM UTC
+- Automatically skips off-season months (May-Oct)
+
+**Tasks:**
+```
+check_basketball_season (ShortCircuitOperator)
+    │
+    ├──► scrape_mens_college_basketball
+    │
+    └──► scrape_womens_college_basketball
+```
+
+**Data output:**
+- Writes to `/opt/airflow/data/raw/espn` inside container
+- Maps to `data/raw/espn/` on host via volume mount
+- Same cache structure as manual CLI usage
+
+**Manual trigger:**
+1. Open Airflow UI (http://localhost:8080)
+2. Find `espn_scraper_daily` DAG
+3. Click "Trigger DAG" (play button)
+4. Check `data/raw/espn/` for scraped data
+
+**Season logic:**
+- Nov-Dec dates → next year's season (e.g., Nov 2024 → 2025 season)
+- Jan-Apr dates → current year's season
+
+**Notes:**
+- Uses `get_all()` which fetches schedule + game data
+- Idempotent: safe to re-run, skips already-cached files
+- Retries 3 times with 5-minute delays on failure
+
+---
+
+## 11. Custom Airflow Image
 
 Airflow uses a **custom image** that installs:
 - `kaggle_mmlm`
@@ -484,7 +529,7 @@ docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper, e
 
 ---
 
-## 11. Git Hygiene
+## 12. Git Hygiene
 
 ### Files tracked
 - `pyproject.toml`
@@ -504,7 +549,7 @@ docker exec -it airflow-webserver python -c "import kaggle_mmlm, espn_scraper, e
 
 ---
 
-## 12. Common Commands (Quick Reference)
+## 13. Common Commands (Quick Reference)
 
 ### Repo root
 ```powershell
@@ -550,7 +595,7 @@ docker compose run --rm airflow-init
 
 ---
 
-## 13. Mental Model (Important)
+## 14. Mental Model (Important)
 
 - **Local dev & ML:** Python 3.11 (uv)
 - **Airflow runtime:** Python 3.12 (Docker image)
@@ -561,7 +606,7 @@ docker compose run --rm airflow-init
 
 ---
 
-## 14. If Something Breaks
+## 15. If Something Breaks
 
 1. Restart terminal
 2. Ensure **Docker Desktop is running**
