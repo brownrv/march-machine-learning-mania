@@ -60,8 +60,8 @@ def parse_events(
     parsed_base = Path(parsed_path) if parsed_path else DEFAULT_PARSED_BASE
 
     events = []
-    teams = []
-    venues = []
+    teams: dict[str, dict] = {}  # Deduplicate by id
+    venues: dict[str, dict] = {}  # Deduplicate by id
 
     logger.info("Parsing schedule data for %s %s...", league, season)
 
@@ -70,29 +70,32 @@ def parse_events(
             # Parse event
             events.append(parse_event(event))
 
-            # Parse teams from event
-            event_teams = event.get("teams", [])
-            for team in event_teams:
-                teams.append(parse_team_from_schedule(team))
+            # Parse teams from event (deduplicate)
+            for team in event.get("teams", []):
+                parsed = parse_team_from_schedule(team)
+                teams[parsed["id"]] = parsed
 
-            # Parse venue from event
+            # Parse venue from event (deduplicate, keep first)
             venue = parse_venue_from_schedule(event)
-            if venue:
-                venues.append(venue)
+            if venue and venue["id"] not in venues:
+                venues[venue["id"]] = venue
 
-    logger.info("  Found %d events, %d team records, %d venue records", len(events), len(teams), len(venues))
+    logger.info("  Found %d events, %d unique teams, %d unique venues", len(events), len(teams), len(venues))
 
     # Write outputs
     results = {}
     if events:
-        results["events"] = write_events(events, league, season, parsed_base)
-        logger.info("  Wrote events to %s", results['events'])
+        path, count = write_events(events, league, season, parsed_base)
+        results["events"] = path
+        logger.info("  Wrote %d events to %s", count, path)
     if teams:
-        results["teams"] = write_teams(teams, league, season, parsed_base)
-        logger.info("  Wrote teams to %s", results['teams'])
+        path, count = write_teams(list(teams.values()), league, season, parsed_base)
+        results["teams"] = path
+        logger.info("  Wrote %d teams to %s", count, path)
     if venues:
-        results["venues"] = write_venues(venues, league, season, parsed_base)
-        logger.info("  Wrote venues to %s", results['venues'])
+        path, count = write_venues(list(venues.values()), league, season, parsed_base)
+        results["venues"] = path
+        logger.info("  Wrote %d venues to %s", count, path)
 
     return results
 
@@ -122,7 +125,7 @@ def parse_games(
     parsed_base = Path(parsed_path) if parsed_path else DEFAULT_PARSED_BASE
 
     games = []
-    teams = []
+    teams: dict[str, dict] = {}  # Deduplicate by id
 
     logger.info("Parsing game data for %s %s...", league, season)
 
@@ -130,22 +133,24 @@ def parse_games(
         # Parse game
         games.append(parse_game(game_id, data))
 
-        # Parse teams from game
-        gm_strp = data.get("gmStrp", {})
-        for team in gm_strp.get("tms", []):
-            teams.append(parse_team_from_game(team))
+        # Parse teams from game (deduplicate, keep last)
+        for team in data.get("gmStrp", {}).get("tms", []):
+            parsed = parse_team_from_game(team)
+            teams[parsed["id"]] = parsed
 
-    logger.info("  Found %d games, %d team records", len(games), len(teams))
+    logger.info("  Found %d games, %d unique teams", len(games), len(teams))
 
     # Write outputs
     results = {}
     if games:
-        results["games"] = write_games(games, league, season, parsed_base)
-        logger.info("  Wrote games to %s", results['games'])
+        path, count = write_games(games, league, season, parsed_base)
+        results["games"] = path
+        logger.info("  Wrote %d games to %s", count, path)
     if teams:
         # Note: This will merge with teams from schedule if parse_all is used
-        results["teams"] = write_teams(teams, league, season, parsed_base)
-        logger.info("  Wrote teams to %s", results['teams'])
+        path, count = write_teams(list(teams.values()), league, season, parsed_base)
+        results["teams"] = path
+        logger.info("  Wrote %d teams to %s", count, path)
 
     return results
 
@@ -189,11 +194,13 @@ def parse_boxscores(
     # Write outputs
     results = {}
     if all_players:
-        results["players"] = write_players(all_players, league, season, parsed_base)
-        logger.info("  Wrote players to %s", results['players'])
+        path, count = write_players(all_players, league, season, parsed_base)
+        results["players"] = path
+        logger.info("  Wrote %d players to %s", count, path)
     if all_boxscores:
-        results["boxscores"] = write_boxscores(all_boxscores, league, season, parsed_base)
-        logger.info("  Wrote boxscores to %s", results['boxscores'])
+        path, count = write_boxscores(all_boxscores, league, season, parsed_base)
+        results["boxscores"] = path
+        logger.info("  Wrote %d boxscores to %s", count, path)
 
     return results
 
@@ -235,8 +242,9 @@ def parse_playbyplay(
     # Write outputs
     results = {}
     if all_plays:
-        results["playbyplay"] = write_playbyplay(all_plays, league, season, parsed_base)
-        logger.info("  Wrote playbyplay to %s", results['playbyplay'])
+        path, count = write_playbyplay(all_plays, league, season, parsed_base)
+        results["playbyplay"] = path
+        logger.info("  Wrote %d plays to %s", count, path)
 
     return results
 
@@ -280,8 +288,8 @@ def parse_all(
     # Collect all data
     events = []
     games = []
-    teams = []
-    venues = []
+    teams: dict[str, dict] = {}  # Deduplicate by id during parsing
+    venues: dict[str, dict] = {}  # Deduplicate by id during parsing
     players = []
     boxscores = []
     plays = []
@@ -292,20 +300,22 @@ def parse_all(
         for event in schedule_events:
             events.append(parse_event(event))
             for team in event.get("teams", []):
-                teams.append(parse_team_from_schedule(team))
+                parsed = parse_team_from_schedule(team)
+                teams[parsed["id"]] = parsed  # Will be overwritten by game data
             venue = parse_venue_from_schedule(event)
             if venue:
-                venues.append(venue)
-    logger.info("  -> %d events, %d venues", len(events), len(venues))
+                if venue["id"] not in venues:  # Keep first occurrence
+                    venues[venue["id"]] = venue
+    logger.info("  -> %d events, %d unique venues", len(events), len(venues))
 
     # 2. Parse games
     logger.info("[2/4] Parsing game files...")
     for game_id, data in read_games(league, season, raw_base):
         games.append(parse_game(game_id, data))
-        gm_strp = data.get("gmStrp", {})
-        for team in gm_strp.get("tms", []):
-            teams.append(parse_team_from_game(team))
-    logger.info("  -> %d games", len(games))
+        for team in data.get("gmStrp", {}).get("tms", []):
+            parsed = parse_team_from_game(team)
+            teams[parsed["id"]] = parsed  # Overwrites schedule data (has conference)
+    logger.info("  -> %d games, %d unique teams", len(games), len(teams))
 
     # 3. Parse boxscores
     logger.info("[3/4] Parsing boxscore files...")
@@ -329,42 +339,39 @@ def parse_all(
     results = {}
 
     if events:
-        results["events"] = write_events(events, league, season, parsed_base)
-        logger.info("  events.parquet: %d records", len(events))
+        path, count = write_events(events, league, season, parsed_base)
+        results["events"] = path
+        logger.info("  events.parquet: %d records", count)
 
     if games:
-        results["games"] = write_games(games, league, season, parsed_base)
-        logger.info("  games.parquet: %d records", len(games))
+        path, count = write_games(games, league, season, parsed_base)
+        results["games"] = path
+        logger.info("  games.parquet: %d records", count)
 
     if teams:
-        results["teams"] = write_teams(teams, league, season, parsed_base)
-        # Count deduplicated teams
-        import pandas as pd
-
-        teams_df = pd.read_parquet(results["teams"])
-        logger.info("  teams.parquet: %d unique teams", len(teams_df))
+        path, count = write_teams(list(teams.values()), league, season, parsed_base)
+        results["teams"] = path
+        logger.info("  teams.parquet: %d unique teams", count)
 
     if venues:
-        results["venues"] = write_venues(venues, league, season, parsed_base)
-        import pandas as pd
-
-        venues_df = pd.read_parquet(results["venues"])
-        logger.info("  venues.parquet: %d unique venues", len(venues_df))
+        path, count = write_venues(list(venues.values()), league, season, parsed_base)
+        results["venues"] = path
+        logger.info("  venues.parquet: %d unique venues", count)
 
     if players:
-        results["players"] = write_players(players, league, season, parsed_base)
-        import pandas as pd
-
-        players_df = pd.read_parquet(results["players"])
-        logger.info("  players.parquet: %d unique players", len(players_df))
+        path, count = write_players(players, league, season, parsed_base)
+        results["players"] = path
+        logger.info("  players.parquet: %d unique players", count)
 
     if boxscores:
-        results["boxscores"] = write_boxscores(boxscores, league, season, parsed_base)
-        logger.info("  boxscores.parquet: %d records", len(boxscores))
+        path, count = write_boxscores(boxscores, league, season, parsed_base)
+        results["boxscores"] = path
+        logger.info("  boxscores.parquet: %d records", count)
 
     if plays:
-        results["playbyplay"] = write_playbyplay(plays, league, season, parsed_base)
-        logger.info("  playbyplay.parquet: %d records", len(plays))
+        path, count = write_playbyplay(plays, league, season, parsed_base)
+        results["playbyplay"] = path
+        logger.info("  playbyplay.parquet: %d records", count)
 
     logger.info("=" * 60)
     logger.info("Done! Output directory: %s", parsed_base / league / season)

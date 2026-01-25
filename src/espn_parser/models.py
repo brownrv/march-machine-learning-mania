@@ -44,7 +44,7 @@ class Game(TypedDict, total=False):
     tm1_logoDk: str
     tm1_logoMd: str
     tm1_rank: int | None
-    tm1_score: str
+    tm1_score: int | None
     tm1_winner: bool
     tm1_conference: str
     tm1_recordTotal: str
@@ -57,7 +57,7 @@ class Game(TypedDict, total=False):
     tm2_logoDk: str
     tm2_logoMd: str
     tm2_rank: int | None
-    tm2_score: str
+    tm2_score: int | None
     tm2_winner: bool
     tm2_conference: str
     tm2_recordTotal: str

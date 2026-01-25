@@ -51,7 +51,7 @@ def write_events(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write events to parquet.
 
@@ -62,15 +62,11 @@ def write_events(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, record count)
     """
-    df = pd.DataFrame(records)
-    # Reorder columns and handle missing
-    for col in EVENT_COLUMNS:
-        if col not in df.columns:
-            df[col] = None
-    df = df[EVENT_COLUMNS]
-    return write_parquet(df, league, season, "events", base_path)
+    df = pd.DataFrame(records).reindex(columns=EVENT_COLUMNS)
+    path = write_parquet(df, league, season, "events", base_path)
+    return path, len(df)
 
 
 def write_games(
@@ -78,7 +74,7 @@ def write_games(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write games to parquet.
 
@@ -89,14 +85,11 @@ def write_games(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, record count)
     """
-    df = pd.DataFrame(records)
-    for col in GAME_COLUMNS:
-        if col not in df.columns:
-            df[col] = None
-    df = df[GAME_COLUMNS]
-    return write_parquet(df, league, season, "games", base_path)
+    df = pd.DataFrame(records).reindex(columns=GAME_COLUMNS)
+    path = write_parquet(df, league, season, "games", base_path)
+    return path, len(df)
 
 
 def write_teams(
@@ -104,7 +97,7 @@ def write_teams(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write teams to parquet (deduplicated).
 
@@ -115,17 +108,14 @@ def write_teams(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, unique team count)
     """
-    df = pd.DataFrame(records)
-    for col in TEAM_COLUMNS:
-        if col not in df.columns:
-            df[col] = None
-    df = df[TEAM_COLUMNS]
-    # Deduplicate by id, keeping first occurrence
-    df = df.drop_duplicates(subset=["id"], keep="first")
+    df = pd.DataFrame(records).reindex(columns=TEAM_COLUMNS)
+    # Deduplicate by id, keeping last occurrence (game files have more complete data)
+    df = df.drop_duplicates(subset=["id"], keep="last")
     df = df.sort_values("id").reset_index(drop=True)
-    return write_parquet(df, league, season, "teams", base_path)
+    path = write_parquet(df, league, season, "teams", base_path)
+    return path, len(df)
 
 
 def write_venues(
@@ -133,7 +123,7 @@ def write_venues(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write venues to parquet (deduplicated).
 
@@ -144,21 +134,17 @@ def write_venues(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, unique venue count)
     """
-    df = pd.DataFrame(records)
-    if df.empty:
-        # Create empty DataFrame with correct columns
+    if not records:
         df = pd.DataFrame(columns=VENUE_COLUMNS)
     else:
-        for col in VENUE_COLUMNS:
-            if col not in df.columns:
-                df[col] = None
-        df = df[VENUE_COLUMNS]
+        df = pd.DataFrame(records).reindex(columns=VENUE_COLUMNS)
         # Deduplicate by id, keeping first occurrence
         df = df.drop_duplicates(subset=["id"], keep="first")
         df = df.sort_values("id").reset_index(drop=True)
-    return write_parquet(df, league, season, "venues", base_path)
+    path = write_parquet(df, league, season, "venues", base_path)
+    return path, len(df)
 
 
 def write_players(
@@ -166,7 +152,7 @@ def write_players(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write players to parquet (deduplicated).
 
@@ -177,20 +163,17 @@ def write_players(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, unique player count)
     """
-    df = pd.DataFrame(records)
-    if df.empty:
+    if not records:
         df = pd.DataFrame(columns=PLAYER_COLUMNS)
     else:
-        for col in PLAYER_COLUMNS:
-            if col not in df.columns:
-                df[col] = None
-        df = df[PLAYER_COLUMNS]
+        df = pd.DataFrame(records).reindex(columns=PLAYER_COLUMNS)
         # Deduplicate by aid (athlete ID), keeping first occurrence
         df = df.drop_duplicates(subset=["aid"], keep="first")
         df = df.sort_values("aid").reset_index(drop=True)
-    return write_parquet(df, league, season, "players", base_path)
+    path = write_parquet(df, league, season, "players", base_path)
+    return path, len(df)
 
 
 def write_boxscores(
@@ -198,7 +181,7 @@ def write_boxscores(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write boxscores to parquet.
 
@@ -209,17 +192,14 @@ def write_boxscores(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, record count)
     """
-    df = pd.DataFrame(records)
-    if df.empty:
+    if not records:
         df = pd.DataFrame(columns=BOXSCORE_COLUMNS)
     else:
-        for col in BOXSCORE_COLUMNS:
-            if col not in df.columns:
-                df[col] = None
-        df = df[BOXSCORE_COLUMNS]
-    return write_parquet(df, league, season, "boxscores", base_path)
+        df = pd.DataFrame(records).reindex(columns=BOXSCORE_COLUMNS)
+    path = write_parquet(df, league, season, "boxscores", base_path)
+    return path, len(df)
 
 
 def write_playbyplay(
@@ -227,7 +207,7 @@ def write_playbyplay(
     league: str,
     season: str,
     base_path: Path | str | None = None,
-) -> Path:
+) -> tuple[Path, int]:
     """
     Write play-by-play data to parquet.
 
@@ -238,14 +218,11 @@ def write_playbyplay(
         base_path: Base directory
 
     Returns:
-        Path to the written file
+        Tuple of (path to the written file, record count)
     """
-    df = pd.DataFrame(records)
-    if df.empty:
+    if not records:
         df = pd.DataFrame(columns=PLAY_COLUMNS)
     else:
-        for col in PLAY_COLUMNS:
-            if col not in df.columns:
-                df[col] = None
-        df = df[PLAY_COLUMNS]
-    return write_parquet(df, league, season, "playbyplay", base_path)
+        df = pd.DataFrame(records).reindex(columns=PLAY_COLUMNS)
+    path = write_parquet(df, league, season, "playbyplay", base_path)
+    return path, len(df)

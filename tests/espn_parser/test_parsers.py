@@ -294,7 +294,8 @@ class TestParseGame:
         assert result["ref3"] == "Peter Larson"
         assert result["tm1_id"] == "149"
         assert result["tm1_displayName"] == "Montana Grizzlies"
-        assert result["tm1_score"] == "79"
+        assert result["tm1_score"] == 79
+        assert result["tm2_score"] == 89
         assert result["tm2_winner"] is True
         assert result["isConferenceGame"] is True  # Same conference
 

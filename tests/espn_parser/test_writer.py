@@ -50,10 +50,11 @@ class TestWriteEvents:
             {"id": "2", "date": "2024-01-02", "link": "/game/2", "completed": False},
         ]
 
-        result = write_events(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_events(records, "mens-college-basketball", "2024", tmp_path)
 
-        assert result.exists()
-        df = pd.read_parquet(result)
+        assert path.exists()
+        assert count == 2
+        df = pd.read_parquet(path)
         assert len(df) == 2
         assert "neutralSite" in df.columns  # Added missing column
 
@@ -61,11 +62,19 @@ class TestWriteEvents:
         """Test that missing columns are added."""
         records = [{"id": "1"}]  # Minimal record
 
-        result = write_events(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_events(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert "date" in df.columns
         assert "completed" in df.columns
+
+    def test_returns_correct_count(self, tmp_path):
+        """Test that returned count matches written records."""
+        records = [{"id": str(i)} for i in range(5)]
+
+        path, count = write_events(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 5
 
 
 class TestWriteGames:
@@ -83,11 +92,20 @@ class TestWriteGames:
             }
         ]
 
-        result = write_games(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_games(records, "mens-college-basketball", "2024", tmp_path)
 
-        assert result.exists()
-        df = pd.read_parquet(result)
+        assert path.exists()
+        assert count == 1
+        df = pd.read_parquet(path)
         assert len(df) == 1
+
+    def test_returns_correct_count(self, tmp_path):
+        """Test that returned count matches written records."""
+        records = [{"gid": str(i)} for i in range(3)]
+
+        path, count = write_games(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 3
 
 
 class TestWriteTeams:
@@ -101,22 +119,28 @@ class TestWriteTeams:
             {"id": "2", "displayName": "Team B"},
         ]
 
-        result = write_teams(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_teams(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 2  # Only 2 unique teams
+        assert count == 2
 
-    def test_keeps_first_occurrence(self, tmp_path):
-        """Test that first occurrence is kept when deduplicating."""
+    def test_keeps_last_occurrence(self, tmp_path):
+        """Test that last occurrence is kept when deduplicating.
+
+        This is important because game files (parsed after schedule files)
+        have more complete data including conference names.
+        """
         records = [
-            {"id": "1", "displayName": "First"},
-            {"id": "1", "displayName": "Second"},
+            {"id": "1", "displayName": "First", "conference": None},
+            {"id": "1", "displayName": "Second", "conference": "Big Ten"},
         ]
 
-        result = write_teams(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_teams(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
-        assert df[df["id"] == "1"]["displayName"].iloc[0] == "First"
+        df = pd.read_parquet(path)
+        assert df[df["id"] == "1"]["displayName"].iloc[0] == "Second"
+        assert df[df["id"] == "1"]["conference"].iloc[0] == "Big Ten"
 
     def test_sorts_by_id(self, tmp_path):
         """Test that teams are sorted by ID."""
@@ -126,10 +150,23 @@ class TestWriteTeams:
             {"id": "2", "displayName": "Team B"},
         ]
 
-        result = write_teams(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_teams(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert df["id"].tolist() == ["1", "2", "3"]
+
+    def test_returns_deduplicated_count(self, tmp_path):
+        """Test that returned count is after deduplication."""
+        records = [
+            {"id": "1", "displayName": "Team A"},
+            {"id": "1", "displayName": "Team A v2"},
+            {"id": "1", "displayName": "Team A v3"},
+            {"id": "2", "displayName": "Team B"},
+        ]
+
+        path, count = write_teams(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 2  # Only 2 unique teams
 
 
 class TestWriteVenues:
@@ -143,18 +180,44 @@ class TestWriteVenues:
             {"id": "2", "fullName": "Arena B"},
         ]
 
-        result = write_venues(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_venues(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 2
+        assert count == 2
+
+    def test_keeps_first_occurrence(self, tmp_path):
+        """Test that first occurrence is kept when deduplicating venues."""
+        records = [
+            {"id": "1", "fullName": "First Name"},
+            {"id": "1", "fullName": "Second Name"},
+        ]
+
+        path, count = write_venues(records, "mens-college-basketball", "2024", tmp_path)
+
+        df = pd.read_parquet(path)
+        assert df[df["id"] == "1"]["fullName"].iloc[0] == "First Name"
 
     def test_handles_empty_records(self, tmp_path):
         """Test handling empty records list."""
-        result = write_venues([], "mens-college-basketball", "2024", tmp_path)
+        path, count = write_venues([], "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 0
+        assert count == 0
         assert "fullName" in df.columns
+
+    def test_returns_deduplicated_count(self, tmp_path):
+        """Test that returned count is after deduplication."""
+        records = [
+            {"id": "1", "fullName": "Arena A"},
+            {"id": "1", "fullName": "Arena A v2"},
+            {"id": "2", "fullName": "Arena B"},
+        ]
+
+        path, count = write_venues(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 2
 
 
 class TestWritePlayers:
@@ -168,17 +231,31 @@ class TestWritePlayers:
             {"aid": "2", "athleteName": "Player B", "tid": "10"},
         ]
 
-        result = write_players(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_players(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 2
+        assert count == 2
 
     def test_handles_empty_records(self, tmp_path):
         """Test handling empty records list."""
-        result = write_players([], "mens-college-basketball", "2024", tmp_path)
+        path, count = write_players([], "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 0
+        assert count == 0
+
+    def test_returns_deduplicated_count(self, tmp_path):
+        """Test that returned count is after deduplication."""
+        records = [
+            {"aid": "1", "athleteName": "Player A"},
+            {"aid": "1", "athleteName": "Player A v2"},
+            {"aid": "2", "athleteName": "Player B"},
+        ]
+
+        path, count = write_players(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 2
 
 
 class TestWriteBoxscores:
@@ -191,17 +268,27 @@ class TestWriteBoxscores:
             {"gid": "1", "aid": "101", "PTS": 15},
         ]
 
-        result = write_boxscores(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_boxscores(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 2
+        assert count == 2
 
     def test_handles_empty_records(self, tmp_path):
         """Test handling empty records list."""
-        result = write_boxscores([], "mens-college-basketball", "2024", tmp_path)
+        path, count = write_boxscores([], "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 0
+        assert count == 0
+
+    def test_returns_correct_count(self, tmp_path):
+        """Test that returned count matches written records."""
+        records = [{"gid": "1", "aid": str(i)} for i in range(10)]
+
+        path, count = write_boxscores(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 10
 
 
 class TestWritePlaybyplay:
@@ -214,14 +301,24 @@ class TestWritePlaybyplay:
             {"gid": "1", "id": "play2", "period": 1, "time": "19:45"},
         ]
 
-        result = write_playbyplay(records, "mens-college-basketball", "2024", tmp_path)
+        path, count = write_playbyplay(records, "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 2
+        assert count == 2
 
     def test_handles_empty_records(self, tmp_path):
         """Test handling empty records list."""
-        result = write_playbyplay([], "mens-college-basketball", "2024", tmp_path)
+        path, count = write_playbyplay([], "mens-college-basketball", "2024", tmp_path)
 
-        df = pd.read_parquet(result)
+        df = pd.read_parquet(path)
         assert len(df) == 0
+        assert count == 0
+
+    def test_returns_correct_count(self, tmp_path):
+        """Test that returned count matches written records."""
+        records = [{"gid": "1", "id": f"play{i}"} for i in range(100)]
+
+        path, count = write_playbyplay(records, "mens-college-basketball", "2024", tmp_path)
+
+        assert count == 100
